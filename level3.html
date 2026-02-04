@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Kejar Aku - Level 3: BOSS</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', Courier, monospace; }
+        
+        /* UI Health Boss */
+        #boss-ui {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            width: 60%; height: 25px; border: 2px solid #fff; background: rgba(0,0,0,0.5); z-index: 10;
+        }
+        #boss-hp { width: 100%; height: 100%; background: #ff0000; transition: 0.1s; }
+        
+        /* UI Nyawa Player */
+        #player-lives {
+            position: absolute; top: 60px; left: 20px; color: #ff0000; font-size: 24px; z-index: 10;
+            text-shadow: 0 0 10px #ff0000; font-weight: bold;
+        }
+
+        #crosshair {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            color: #fff; font-size: 24px; pointer-events: none; z-index: 5;
+        }
+
+        /* Minimap */
+        #minimap {
+            position: absolute; bottom: 20px; right: 20px;
+            width: 150px; height: 150px;
+            border: 2px solid #fff; background: rgba(0,0,0,0.8);
+            border-radius: 5px; overflow: hidden; z-index: 10;
+        }
+        #p-dot, #e-dot { position: absolute; width: 8px; height: 8px; border-radius: 50%; transform: translate(-50%, -50%); }
+        #p-dot { background: #00ff00; box-shadow: 0 0 5px #0f0; }
+        #e-dot { background: red; box-shadow: 0 0 10px red; }
+
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center;
+            align-items: center; text-align: center; z-index: 100; color: white;
+        }
+        #start-screen { background: rgba(0,0,0,0.95); }
+        #death-screen { background: rgba(100,0,0,0.95); display: none; }
+        #win-screen { background: rgba(0,50,150,0.95); display: none; }
+        
+        button {
+            padding: 15px 40px; font-size: 20px; cursor: pointer;
+            background: #ff0000; color: white; border: none; border-radius: 5px;
+            font-weight: bold; transition: 0.3s; margin-top: 20px; outline: none;
+        }
+        button:hover { box-shadow: 0 0 20px #ff0000, 0 0 40px #ff0000; transform: scale(1.1); }
+    </style>
+</head>
+<body>
+
+    <div id="crosshair">+</div>
+    <div id="player-lives">NYAWA: ❤ ❤ ❤</div>
+
+    <div id="start-screen" class="overlay">
+        <h1 style="color: #ff0000; font-size: 50px;">LEVEL 3: BOSS FIGHT</h1>
+        <p>Hati-hati! Boss bisa teleport dan menembak!<br>Klik kiri untuk menembak. Kamu punya 3 nyawa!</p>
+        <button onclick="startGame()">BANTAIII🔥</button>
+    </div>
+
+    <div id="death-screen" class="overlay">
+        <h1 style="font-size: 60px;">KAMU TEWAS MENGENASKAN!</h1>
+        <p id="death-msg">COPU AWOKAWOK!</p>
+        <button onclick="location.reload()">COBA LAGI</button>
+    </div>
+
+    <div id="win-screen" class="overlay">
+        <h1 style="color: #00ffff; font-size: 60px;">LEGENDARY VICTORY!</h1>
+        <p>Monster Kubus berhasil dikalahkan. Dunia kembali aman!</p>
+        <p>Silahkan ambil AEROXmu di dealer terdekat!</p>
+        <button onclick="window.location.href='index.html'">TAMAT 😊</button>
+    </div>
+
+    <div id="boss-ui"><div id="boss-hp"></div></div>
+    <div id="minimap">
+        <div id="p-dot"></div>
+        <div id="e-dot"></div>
+    </div>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.Fog(0x000000, 1, 80);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Arena
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+        floor.rotation.x = -Math.PI/2; scene.add(floor);
+        const arenaWallM = new THREE.MeshStandardMaterial({ color: 0x220000 });
+        const wallNorth = new THREE.Mesh(new THREE.BoxGeometry(120, 15, 2), arenaWallM); wallNorth.position.set(0, 7.5, -60); scene.add(wallNorth);
+        const wallSouth = new THREE.Mesh(new THREE.BoxGeometry(120, 15, 2), arenaWallM); wallSouth.position.set(0, 7.5, 60); scene.add(wallSouth);
+        const wallEast = new THREE.Mesh(new THREE.BoxGeometry(120, 15, 2), arenaWallM); wallEast.rotation.y = Math.PI/2; wallEast.position.set(60, 7.5, 0); scene.add(wallEast);
+        const wallWest = new THREE.Mesh(new THREE.BoxGeometry(120, 15, 2), arenaWallM); wallWest.rotation.y = Math.PI/2; wallWest.position.set(-60, 7.5, 0); scene.add(wallWest);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.2));
+        const pointLight = new THREE.PointLight(0xff0000, 150, 100); pointLight.position.set(0, 20, 0); scene.add(pointLight);
+
+        // Game State
+        let bossHP = 100;
+        let playerLives = 3;
+        let isGameOver = false;
+        let gameStarted = false;
+        let invulnerable = false;
+
+        // Boss
+        const bossG = new THREE.BoxGeometry(6, 10, 6);
+        const bossM = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0x550000 });
+        const boss = new THREE.Mesh(bossG, bossM);
+        boss.position.set(0, 5, -30); scene.add(boss);
+
+        // Projectiles
+        const bullets = [];
+        const bossBullets = [];
+
+        function teleportBoss() {
+            if (!gameStarted || isGameOver || bossHP <= 0) return;
+            const randomX = (Math.random() - 0.5) * 90;
+            const randomZ = (Math.random() - 0.5) * 90;
+            boss.material.emissive.setHex(0x00ffff); 
+            setTimeout(() => {
+                boss.position.set(randomX, 5, randomZ);
+                boss.material.emissive.setHex(0x550000);
+            }, 200);
+        }
+        setInterval(teleportBoss, 3500);
+
+        function bossShoot() {
+            if (!gameStarted || isGameOver || bossHP <= 0) return;
+            const bBall = new THREE.Mesh(new THREE.SphereGeometry(0.8), new THREE.MeshBasicMaterial({ color: 0xff4400 }));
+            bBall.position.copy(boss.position);
+            const targetDir = new THREE.Vector3().subVectors(camera.position, boss.position).normalize();
+            bBall.userData.velocity = targetDir.multiplyScalar(0.7);
+            scene.add(bBall); bossBullets.push(bBall);
+        }
+        setInterval(bossShoot, 2500);
+
+        function playerHit() {
+            if (invulnerable || isGameOver || !gameStarted) return;
+            playerLives--;
+            updateLivesUI();
+            invulnerable = true;
+            
+            document.body.style.backgroundColor = "red";
+            setTimeout(() => {
+                document.body.style.backgroundColor = "black";
+                invulnerable = false;
+            }, 500);
+
+            if (playerLives <= 0) endGame(false);
+        }
+
+        function updateLivesUI() {
+            let hearts = "";
+            for(let i=0; i<playerLives; i++) hearts += "❤ ";
+            document.getElementById('player-lives').innerText = "NYAWA: " + hearts;
+        }
+
+        function endGame(win) {
+            isGameOver = true;
+            document.exitPointerLock();
+            if (win) {
+                document.getElementById('win-screen').style.display = 'flex';
+                scene.remove(boss);
+            } else {
+                document.getElementById('death-screen').style.display = 'flex';
+            }
+        }
+
+        let keys = {};
+        let yaw = 0, pitch = 0;
+        window.onkeydown = (e) => keys[e.code] = true;
+        window.onkeyup = (e) => keys[e.code] = false;
+        window.onmousemove = (e) => {
+            if(document.pointerLockElement) {
+                yaw -= e.movementX * 0.002; pitch -= e.movementY * 0.002;
+                pitch = Math.max(-1.5, Math.min(1.5, pitch));
+            }
+        };
+        window.onclick = () => {
+            if(document.pointerLockElement && !isGameOver && gameStarted) {
+                const bullet = new THREE.Mesh(new THREE.SphereGeometry(0.3), new THREE.MeshBasicMaterial({ color: 0xffff00 }));
+                bullet.position.copy(camera.position);
+                const dir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+                bullet.userData.velocity = dir.multiplyScalar(1.5);
+                scene.add(bullet); bullets.push(bullet);
+            }
+        };
+        window.startGame = () => {
+            gameStarted = true;
+            document.getElementById('start-screen').style.display = 'none';
+            document.body.requestPointerLock();
+        };
+
+        function animate() {
+            if (isGameOver) return;
+            requestAnimationFrame(animate);
+
+            if (gameStarted) {
+                camera.rotation.set(pitch, yaw, 0, 'YXZ');
+                const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+                const sDir = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+                const pSpeed = 0.25;
+
+                if(keys['KeyW']) { camera.position.x += dir.x * pSpeed; camera.position.z += dir.z * pSpeed; }
+                if(keys['KeyS']) { camera.position.x -= dir.x * pSpeed; camera.position.z -= dir.z * pSpeed; }
+                if(keys['KeyA']) { camera.position.x -= sDir.x * pSpeed; camera.position.z -= sDir.z * pSpeed; }
+                if(keys['KeyD']) { camera.position.x += sDir.x * pSpeed; camera.position.z += sDir.z * pSpeed; }
+                
+                camera.position.x = Math.max(-58, Math.min(58, camera.position.x));
+                camera.position.z = Math.max(-58, Math.min(58, camera.position.z));
+
+                // Boss AI
+                let distanceToBoss = camera.position.distanceTo(boss.position);
+                let toPlayer = new THREE.Vector3().subVectors(camera.position, boss.position).normalize();
+                let bossSpeed = 0.12 + ((100 - bossHP) * 0.002);
+                boss.position.addScaledVector(toPlayer, bossSpeed);
+                boss.position.y = 5;
+                boss.rotation.y += 0.05;
+
+                // Collision: Boss Hit Player
+                if(distanceToBoss < 4.5) playerHit();
+
+                // Bullets Player
+                bullets.forEach((b, i) => {
+                    b.position.add(b.userData.velocity);
+                    if(b.position.distanceTo(boss.position) < 4) {
+                        bossHP -= 4;
+                        document.getElementById('boss-hp').style.width = bossHP + '%';
+                        scene.remove(b); bullets.splice(i, 1);
+                        boss.material.emissive.setHex(0xffffff);
+                        setTimeout(() => boss.material.emissive.setHex(0x550000), 50);
+                    }
+                    if(b.position.length() > 100) { scene.remove(b); bullets.splice(i, 1); }
+                });
+
+                // Bullets Boss
+                bossBullets.forEach((bb, i) => {
+                    bb.position.add(bb.userData.velocity);
+                    if(bb.position.distanceTo(camera.position) < 1.5) {
+                        scene.remove(bb); bossBullets.splice(i, 1);
+                        playerHit();
+                    }
+                    if(bb.position.distanceTo(boss.position) > 100) { scene.remove(bb); bossBullets.splice(i, 1); }
+                });
+
+                if(bossHP <= 0) endGame(true);
+            }
+
+            // Minimap (tetap update posisi awal)
+            document.getElementById('p-dot').style.left = (camera.position.x + 60) * (150/120) + 'px';
+            document.getElementById('p-dot').style.top = (camera.position.z + 60) * (150/120) + 'px';
+            document.getElementById('e-dot').style.left = (boss.position.x + 60) * (150/120) + 'px';
+            document.getElementById('e-dot').style.top = (boss.position.z + 60) * (150/120) + 'px';
+
+            renderer.render(scene, camera);
+        }
+
+        camera.position.set(0, 1.6, 40);
+        animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Kejar Aku - Level 2: Nightmare</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', Courier, monospace; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #fff; pointer-events: none; z-index: 10; }
+        
+        #minimap {
+            position: absolute; bottom: 20px; right: 20px;
+            width: 195px; height: 195px;
+            border: 2px solid #ff0000; background: rgba(0,0,0,0.85);
+            border-radius: 5px; overflow: hidden;
+        }
+        .wall-ui { position: absolute; background: #444; width: 13px; height: 13px; }
+        #p-dot, .e-dot { position: absolute; width: 8px; height: 8px; border-radius: 50%; z-index: 20; }
+        #p-dot { background: #00ff00; }
+
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center;
+            align-items: center; text-align: center; z-index: 100; color: white;
+        }
+        #start-screen { background: rgba(0,0,0,0.95); }
+        #death-screen { background: rgba(100,0,0,0.9); display: none; }
+        #win-screen { background: rgba(0, 50, 0, 0.9); display: none; }
+        
+        #jumpscare {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 1000; display: none;
+            background-image: url('https://files.catbox.moe/k3i48f.jpg');
+            background-size: cover; background-position: center;
+        }
+        button {
+            padding: 15px 40px; font-size: 20px; cursor: pointer;
+            background: #ff0000; color: white; border: none; border-radius: 5px;
+            font-family: inherit; font-weight: bold; transition: 0.3s all ease; 
+            margin-top: 20px; outline: none;
+        }
+        button:hover {
+            background: #ff3333; transform: scale(1.05);
+            box-shadow: 0 0 20px #ff0000, 0 0 40px #ff0000;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="jumpscare"></div>
+
+    <div id="start-screen" class="overlay">
+        <h1 style="color: #ffaa00;">LEVEL 2: NIGHTMARE</h1>
+        <p>Musuhnya ada 2 si Merah dan si Biru.<br>Si Biru bisa tembus tembok! Kumpulkan 5 Inti.</p>
+        <button onclick="startGame()">GASSS!</button>
+    </div>
+
+    <div id="death-screen" class="overlay">
+        <h1>TERTANGKAP!</h1>
+        <button onclick="location.reload()">COBA LAGI</button>
+    </div>
+
+    <div id="win-screen" class="overlay">
+        <h1 style="color: #00ff00;">MISI BERHASIL!</h1>
+        <p>Semua inti telah terkumpul. Energi portal telah terbuka!</p>
+        <button onclick="window.location.href='level3.html'">MASUK KE PORTAL BOSS</button>
+    </div>
+
+    <div id="ui">
+        <h1>MISI: KUMPULKAN 5 INTI</h1>
+        <h2 id="score">INTI: 0/5</h2>
+    </div>
+    
+    <div id="minimap">
+        <div id="p-dot"></div>
+    </div>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.Fog(0x000000, 1, 45);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const CELL_SIZE = 6;
+        const walls = [];
+        const objectives = [];
+        let score = 0;
+        let isGameOver = false;
+        let gameStarted = false; // Musuh diam sebelum mulai
+        let startTime = 0;
+
+        const mazeLayout = [
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+            [1,2,0,0,0,1,0,0,0,0,0,0,0,3,1],
+            [1,1,1,1,0,1,0,1,1,1,1,1,1,0,1],
+            [1,3,0,0,0,0,0,1,0,0,0,3,1,0,1],
+            [1,0,1,1,1,1,0,1,0,1,1,0,1,0,1],
+            [1,0,1,0,0,0,0,0,0,1,0,0,0,0,1],
+            [1,0,1,0,1,1,1,1,1,1,0,1,1,0,1],
+            [1,0,0,0,1,3,0,0,0,0,0,1,0,0,1],
+            [1,1,1,0,1,1,1,0,1,1,1,1,0,1,1],
+            [1,0,0,0,0,0,0,0,1,3,0,0,0,0,1],
+            [1,0,1,1,1,1,1,0,1,0,1,1,1,0,1],
+            [1,0,1,0,0,0,1,0,0,0,1,0,0,0,1],
+            [1,0,1,0,1,0,1,1,1,1,1,0,1,1,1],
+            [1,0,0,3,1,0,0,0,0,0,0,0,0,0,1],
+            [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+        ];
+
+        mazeLayout.forEach((row, z) => {
+            row.forEach((cell, x) => {
+                const posX = x * CELL_SIZE; const posZ = z * CELL_SIZE;
+                if (cell === 1) {
+                    const wall = new THREE.Mesh(new THREE.BoxGeometry(CELL_SIZE, 7, CELL_SIZE), new THREE.MeshStandardMaterial({ color: 0x111111 }));
+                    wall.position.set(posX, 3.5, posZ); scene.add(wall); walls.push(wall);
+                    const wUI = document.createElement('div');
+                    wUI.className = 'wall-ui';
+                    wUI.style.left = (x * 13) + 'px'; wUI.style.top = (z * 13) + 'px';
+                    document.getElementById('minimap').appendChild(wUI);
+                } else if (cell === 3) {
+                    const obj = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6), new THREE.MeshBasicMaterial({ color: 0xffff00 }));
+                    obj.position.set(posX, 1.2, posZ); scene.add(obj); objectives.push(obj);
+                } else if (cell === 2) { camera.position.set(posX, 1.6, posZ); }
+            });
+        });
+
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: 0x050505 }));
+        floor.rotation.x = -Math.PI/2; floor.position.set(45,0,45); scene.add(floor);
+        const flashlight = new THREE.SpotLight(0xffffff, 180, 45, Math.PI/4.5, 0.4);
+        scene.add(flashlight); scene.add(flashlight.target);
+
+        const enemies = [
+            { mesh: createEnemy(0xff0000), speed: 0.045, id: 'red' },
+            { mesh: createEnemy(0x0000ff), speed: 0.065, id: 'blue' }
+        ];
+
+        function createEnemy(color) {
+            const e = new THREE.Mesh(new THREE.BoxGeometry(1.5, 3, 1.5), new THREE.MeshBasicMaterial({ color: color }));
+            e.position.set(70, 1.5, 70); scene.add(e);
+            const l = new THREE.PointLight(color, 60, 15); scene.add(l);
+            e.userData.light = l;
+            const dot = document.createElement('div');
+            dot.className = 'e-dot'; dot.style.cssText = `position:absolute; width:8px; height:8px; border-radius:50%; background:${color === 0xff0000 ? 'red' : 'blue'}; z-index:21;`;
+            document.getElementById('minimap').appendChild(dot);
+            e.userData.dot = dot;
+            if(color === 0x0000ff) { e.material.transparent = true; e.material.opacity = 0.5; }
+            return e;
+        }
+
+        function checkCollision(pos, radius) {
+            for (let w of walls) {
+                const dx = pos.x - w.position.x; const dz = pos.z - w.position.z;
+                if (Math.abs(dx) < (CELL_SIZE/2 + radius) && Math.abs(dz) < (CELL_SIZE/2 + radius)) return true;
+            }
+            return false;
+        }
+
+        let keys = {};
+        window.onkeydown=(e)=>keys[e.code]=true;
+        window.onkeyup=(e)=>keys[e.code]=false;
+        let yaw=0, pitch=0;
+        window.onmousemove=(e)=>{ if(document.pointerLockElement){ yaw -= e.movementX * 0.002; pitch -= e.movementY * 0.002; pitch = Math.max(-1.5, Math.min(1.5, pitch)); } };
+
+        window.startGame = () => {
+            gameStarted = true;
+            document.getElementById('start-screen').style.display = 'none';
+            document.body.requestPointerLock();
+            startTime = Date.now();
+        };
+
+        function animate() {
+            if (isGameOver) return;
+            requestAnimationFrame(animate);
+
+            let minTargetDist = 100;
+            enemies.forEach(en => {
+                let d = camera.position.distanceTo(en.mesh.position);
+                if (d < minTargetDist) minTargetDist = d;
+            });
+
+            let currentShake = 0;
+            if (minTargetDist < 15) currentShake = (15 - minTargetDist) * 0.015;
+
+            if (startTime > 0 && Date.now() - startTime > 5000 && Date.now() - startTime < 5800) {
+                document.getElementById('jumpscare').style.display = 'block';
+            } else {
+                document.getElementById('jumpscare').style.display = 'none';
+            }
+
+            camera.rotation.set(pitch + (Math.random()-0.5)*currentShake, yaw + (Math.random()-0.5)*currentShake, 0, 'YXZ');
+            const dir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+            const sDir = new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion);
+            const pSpeed = 0.14;
+            let moveX = 0, moveZ = 0;
+            if(keys['KeyW']) { moveX += dir.x * pSpeed; moveZ += dir.z * pSpeed; }
+            if(keys['KeyS']) { moveX -= dir.x * pSpeed; moveZ -= dir.z * pSpeed; }
+            if(keys['KeyA']) { moveX -= sDir.x * pSpeed; moveZ -= sDir.z * pSpeed; }
+            if(keys['KeyD']) { moveX += sDir.x * pSpeed; moveZ += sDir.z * pSpeed; }
+
+            if(!checkCollision(new THREE.Vector3(camera.position.x + moveX, 1.6, camera.position.z), 0.8)) camera.position.x += moveX;
+            if(!checkCollision(new THREE.Vector3(camera.position.x, 1.6, camera.position.z + moveZ), 0.8)) camera.position.z += moveZ;
+
+            flashlight.position.copy(camera.position);
+            flashlight.target.position.copy(camera.position).add(dir);
+
+            // Pergerakan Musuh (Hanya jika gameStarted)
+            enemies.forEach(en => {
+                if(gameStarted) {
+                    let toP = new THREE.Vector3().subVectors(camera.position, en.mesh.position).normalize();
+                    if (en.id === 'blue') { 
+                        en.mesh.position.addScaledVector(toP, en.speed); 
+                    } else {
+                        let testP = en.mesh.position.clone().addScaledVector(toP, en.speed);
+                        if(!checkCollision(testP, 0.7)) en.mesh.position.copy(testP);
+                        else en.mesh.position.addScaledVector(new THREE.Vector3(-toP.z, 0, toP.x), en.speed);
+                    }
+                }
+                en.mesh.userData.light.position.copy(en.mesh.position);
+                en.mesh.userData.dot.style.left = (en.mesh.position.x/6*13) + 'px';
+                en.mesh.userData.dot.style.top = (en.mesh.position.z/6*13) + 'px';
+
+                if(camera.position.distanceTo(en.mesh.position) < 1.8) {
+                    isGameOver = true; document.exitPointerLock();
+                    document.getElementById('death-screen').style.display = 'flex';
+                }
+            });
+
+            objectives.forEach((obj, i) => {
+                obj.rotation.y += 0.05;
+                if(camera.position.distanceTo(obj.position) < 2.0) {
+                    scene.remove(obj); objectives.splice(i, 1);
+                    score++; document.getElementById('score').innerText = `INTI: ${score}/5`;
+                    if (score >= 5) {
+                        isGameOver = true; document.exitPointerLock();
+                        document.getElementById('win-screen').style.display = 'flex';
+                    }
+                }
+            });
+
+            document.getElementById('p-dot').style.left = (camera.position.x/6*13) + 'px';
+            document.getElementById('p-dot').style.top = (camera.position.z/6*13) + 'px';
+            renderer.render(scene, camera);
+        }
+        scene.add(new THREE.AmbientLight(0xffffff, 0.02));
+        animate();
+    </script>
+</body>
+</html>

@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Kejar Aku - Level 1</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; font-family: 'Courier New', Courier, monospace; }
+        #ui { position: absolute; top: 20px; left: 20px; color: #fff; pointer-events: none; z-index: 10; }
+        
+        /* 1. LOGIKA VISUAL MINIMAP */
+        #minimap {
+            position: absolute; bottom: 20px; right: 20px;
+            width: 160px; height: 160px;
+            border: 2px solid #444; background: rgba(0,0,0,0.8);
+            border-radius: 5px; overflow: hidden;
+        }
+        .wall-ui { 
+            position: absolute; 
+            background: #333; 
+            width: 16px;      
+            height: 16px; 
+        }
+        
+        #p-dot, #e-dot { position: absolute; width: 6px; height: 6px; border-radius: 50%; z-index: 20; }
+        #p-dot { background: #00ff00; box-shadow: 0 0 5px #0f0; }
+        #e-dot { background: red; box-shadow: 0 0 5px red; }
+
+        .overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center;
+            align-items: center; text-align: center; z-index: 100; color: white;
+        }
+        #start-screen { background: rgba(0,0,0,0.9); }
+        #death-screen { background: rgba(100,0,0,0.8); display: none; }
+        #win-screen { background: rgba(0,100,0,0.9); display: none; }
+        
+        button {
+            padding: 15px 40px; font-size: 20px; cursor: pointer;
+            background: #ff0000; color: white; border: none; border-radius: 5px;
+            font-family: inherit; font-weight: bold;
+            transition: 0.3s all ease; margin-top: 20px; outline: none;
+        }
+        button:hover {
+            background: #ff3333; transform: scale(1.05);
+            box-shadow: 0 0 20px #ff0000, 0 0 40px #ff0000;
+        }
+
+        #btn-next { background: #008800; color: white; }
+        #btn-next:hover { background: #00ff00; color: black; box-shadow: 0 0 20px #00ff00; }
+    </style>
+</head>
+<body>
+
+    <div id="start-screen" class="overlay">
+        <h1>KEJAR AKU: LEVEL 1</h1>
+        <p>Kumpulkan 3 Inti Kuning untuk membuka Level 2.</p>
+        <button onclick="startGame()">MULAI PERMAINAN</button>
+    </div>
+
+    <div id="death-screen" class="overlay">
+        <h1>KAMU MATI!</h1>
+        <button onclick="location.reload()">MAIN LAGI</button>
+    </div>
+
+    <div id="win-screen" class="overlay">
+        <h1 style="color: #0f0;">LEVEL 1 BERHASIL!</h1>
+        <button id="btn-next" onclick="window.location.href='level2.html'">LANJUT KE LEVEL 2</button>
+    </div>
+
+    <div id="ui">
+        <h1>MISI: AMBIL 3 INTI</h1>
+        <h2 id="score">INTI: 0/3</h2>
+    </div>
+
+    <div id="minimap">
+        <div id="p-dot"></div>
+        <div id="e-dot"></div>
+    </div>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.Fog(0x000000, 1, 40);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const CELL_SIZE = 6;
+        const walls = [];
+        const objectives = [];
+        let score = 0;
+        let isGameOver = false;
+        let gameStarted = false; // Variable kontrol agar musuh diam dulu
+
+        const mazeLayout = [
+            [1,1,1,1,1,1,1,1,1,1],
+            [1,2,0,0,1,0,0,3,0,1],
+            [1,1,1,0,1,0,1,1,0,1],
+            [1,0,0,0,0,0,1,0,0,1],
+            [1,0,1,1,1,0,1,0,1,1],
+            [1,3,1,0,0,0,0,0,0,1],
+            [1,0,1,0,1,1,1,1,0,1],
+            [1,0,0,0,1,3,0,1,0,1],
+            [1,0,1,0,0,0,0,0,0,1],
+            [1,1,1,1,1,1,1,1,1,1]
+        ];
+
+        mazeLayout.forEach((row, z) => {
+            row.forEach((cell, x) => {
+                const posX = x * CELL_SIZE; const posZ = z * CELL_SIZE;
+                if (cell === 1) {
+                    const wall = new THREE.Mesh(new THREE.BoxGeometry(CELL_SIZE, 6, CELL_SIZE), new THREE.MeshStandardMaterial({ color: 0x000000 }));
+                    wall.position.set(posX, 3, posZ); 
+                    scene.add(wall); walls.push(wall);
+
+                    const wUI = document.createElement('div'); 
+                    wUI.className = 'wall-ui'; 
+                    wUI.style.left = (x * 16) + 'px'; 
+                    wUI.style.top = (z * 16) + 'px';
+                    document.getElementById('minimap').appendChild(wUI);
+                } else if (cell === 3) {
+                    const obj = new THREE.Mesh(new THREE.SphereGeometry(0.5), new THREE.MeshBasicMaterial({ color: 0xffff00 }));
+                    obj.position.set(posX, 1, posZ); scene.add(obj); objectives.push(obj);
+                } else if (cell === 2) { camera.position.set(posX, 1.6, posZ); }
+            });
+        });
+
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), new THREE.MeshStandardMaterial({ color: 0x050505 }));
+        floor.rotation.x = -Math.PI/2; floor.position.set(27,0,27); scene.add(floor);
+
+        const flashlight = new THREE.SpotLight(0xffffff, 150, 40, Math.PI/5, 0.3);
+        scene.add(flashlight); scene.add(flashlight.target);
+
+        const enemy = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.5, 1.2), new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+        enemy.position.set(48, 1.25, 48); scene.add(enemy);
+        const eLight = new THREE.PointLight(0xff0000, 60, 15); scene.add(eLight);
+
+        function checkCollision(pos, radius) {
+            for (let w of walls) {
+                const closestX = Math.max(w.position.x - CELL_SIZE/2, Math.min(pos.x, w.position.x + CELL_SIZE/2));
+                const closestZ = Math.max(w.position.z - CELL_SIZE/2, Math.min(pos.z, w.position.z + CELL_SIZE/2));
+                const dx = pos.x - closestX; const dz = pos.z - closestZ;
+                if ((dx*dx + dz*dz) < (radius * radius)) return true;
+            }
+            return false;
+        }
+
+        let keys = {};
+        window.onkeydown=(e)=>{ keys[e.code]=true; };
+        window.onkeyup=(e)=>keys[e.code]=false;
+        
+        let yaw=0, pitch=0;
+        window.onmousemove=(e)=>{ 
+            if(document.pointerLockElement){ 
+                yaw -= e.movementX * 0.002; 
+                pitch -= e.movementY * 0.002; 
+                pitch = Math.max(-1.5, Math.min(1.5, pitch)); 
+            }
+        };
+
+        window.startGame = () => {
+            gameStarted = true; // Musuh baru boleh gerak
+            document.getElementById('start-screen').style.display = 'none';
+            document.body.requestPointerLock();
+        };
+
+        function animate() {
+            if (isGameOver) return;
+            requestAnimationFrame(animate);
+            
+            camera.rotation.set(pitch, yaw, 0, 'YXZ');
+            const dir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+            const sDir = new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion);
+            const speed = 0.12;
+
+            if(keys['KeyW']) {
+                if(!checkCollision(new THREE.Vector3(camera.position.x + dir.x * speed, 1.6, camera.position.z + dir.z * speed), 0.7)) {
+                    camera.position.x += dir.x * speed; camera.position.z += dir.z * speed;
+                }
+            }
+            if(keys['KeyS']) {
+                if(!checkCollision(new THREE.Vector3(camera.position.x - dir.x * speed, 1.6, camera.position.z - dir.z * speed), 0.7)) {
+                    camera.position.x -= dir.x * speed; camera.position.z -= dir.z * speed;
+                }
+            }
+
+            flashlight.position.copy(camera.position);
+            flashlight.target.position.copy(camera.position).add(dir);
+
+            // LOGIKA MUSUH (Hanya jalan jika gameStarted)
+            if (gameStarted) {
+                const eSpeed = 0.04 + (score * 0.012);
+                let toPlayer = new THREE.Vector3().subVectors(camera.position, enemy.position).normalize();
+                let testPos = enemy.position.clone().addScaledVector(toPlayer, eSpeed);
+                
+                if (!checkCollision(testPos, 0.6)) {
+                    enemy.position.copy(testPos);
+                } else {
+                    let leftDir = new THREE.Vector3(-toPlayer.z, 0, toPlayer.x);
+                    let testLeft = enemy.position.clone().addScaledVector(leftDir, eSpeed);
+                    if (!checkCollision(testLeft, 0.6)) enemy.position.copy(testLeft);
+                }
+            }
+            eLight.position.copy(enemy.position);
+
+            // Ambil Inti
+            objectives.forEach((obj, i) => {
+                if(camera.position.distanceTo(obj.position) < 1.5) {
+                    scene.remove(obj); objectives.splice(i, 1);
+                    score++; document.getElementById('score').innerText = `INTI: ${score}/3`;
+                    if(score>=3) { 
+                        isGameOver = true; document.exitPointerLock();
+                        document.getElementById('win-screen').style.display = 'flex';
+                    }
+                }
+            });
+
+            // Tertangkap
+            if(camera.position.distanceTo(enemy.position) < 1.6) {
+                isGameOver = true; document.exitPointerLock();
+                document.getElementById('death-screen').style.display = 'flex';
+            }
+
+            // Update Minimap
+            document.getElementById('p-dot').style.left = (camera.position.x/6*16)+'px';
+            document.getElementById('p-dot').style.top = (camera.position.z/6*16)+'px';
+            document.getElementById('e-dot').style.left = (enemy.position.x/6*16)+'px';
+            document.getElementById('e-dot').style.top = (enemy.position.z/6*16)+'px';
+
+            renderer.render(scene, camera);
+        }
+        scene.add(new THREE.AmbientLight(0xffffff, 0.01));
+        animate();
+    </script>
+</body>
+</html>
