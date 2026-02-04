@@ -115,10 +115,21 @@
         let invulnerable = false;
 
         // Boss
+            // --- BAGIAN BOSS DENGAN AURA ---
         const bossG = new THREE.BoxGeometry(6, 10, 6);
-        const bossM = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0x550000 });
+        const bossM = new THREE.MeshStandardMaterial({ 
+            color: 0xff0000, 
+            emissive: 0xff0000, // Membuat material mengeluarkan cahaya sendiri
+            emissiveIntensity: 2 
+        });
         const boss = new THREE.Mesh(bossG, bossM);
-        boss.position.set(0, 5, -30); scene.add(boss);
+        boss.position.set(0, 5, -30);
+        scene.add(boss);
+
+        // Tambahkan Aura Merah yang Mengikuti Boss
+        const bossAura = new THREE.PointLight(0xff0000, 500, 40); // Warna merah, intensitas tinggi, jarak 40 unit
+        scene.add(bossAura);
+        
 
         // Projectiles
         const bullets = [];
@@ -206,6 +217,10 @@
         function animate() {
             if (isGameOver) return;
             requestAnimationFrame(animate);
+            // Efek denyut aura
+            if (gameStarted && !isGameOver) {
+                bossAura.intensity = 400 + Math.sin(Date.now() * 0.005) * 200;
+            }
 
             if (gameStarted) {
                 camera.rotation.set(pitch, yaw, 0, 'YXZ');
@@ -228,6 +243,8 @@
                 boss.position.addScaledVector(toPlayer, bossSpeed);
                 boss.position.y = 5;
                 boss.rotation.y += 0.05;
+                bossAura.position.copy(boss.position); // Cahaya menempel pada Boss
+                bossAura.position.y = 8; // Sedikit lebih tinggi agar auranya menyebar dari atas
 
                 // Collision: Boss Hit Player
                 if(distanceToBoss < 4.5) playerHit();
