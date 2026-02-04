@@ -143,10 +143,16 @@
 
         function checkCollision(pos, radius) {
             for (let w of walls) {
+                // Cari titik terdekat pada kotak tembok terhadap posisi player
                 const closestX = Math.max(w.position.x - CELL_SIZE/2, Math.min(pos.x, w.position.x + CELL_SIZE/2));
                 const closestZ = Math.max(w.position.z - CELL_SIZE/2, Math.min(pos.z, w.position.z + CELL_SIZE/2));
-                const dx = pos.x - closestX; const dz = pos.z - closestZ;
-                if ((dx*dx + dz*dz) < (radius * radius)) return true;
+                
+                // Hitung jarak dari posisi player ke titik terdekat tersebut
+                const dx = pos.x - closestX;
+                const dz = pos.z - closestZ;
+                const distanceSquared = (dx * dx) + (dz * dz);
+                
+                if (distanceSquared < (radius * radius)) return true;
             }
             return false;
         }
@@ -177,17 +183,30 @@
             camera.rotation.set(pitch, yaw, 0, 'YXZ');
             const dir = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
             const sDir = new THREE.Vector3(1,0,0).applyQuaternion(camera.quaternion);
-            const speed = 0.12;
+            
 
-            if(keys['KeyW']) {
-                if(!checkCollision(new THREE.Vector3(camera.position.x + dir.x * speed, 1.6, camera.position.z + dir.z * speed), 0.7)) {
-                    camera.position.x += dir.x * speed; camera.position.z += dir.z * speed;
-                }
+                        // Konfigurasi Gerak
+            const speed = 0.15;
+            const playerRadius = 0.5; // Ukuran fisik karakter agar tidak terlalu mepet tembok
+            let moveX = 0;
+            let moveZ = 0;
+
+            // 1. Hitung total input gerakan
+            if(keys['KeyW']) { moveX += dir.x * speed; moveZ += dir.z * speed; }
+            if(keys['KeyS']) { moveX -= dir.x * speed; moveZ -= dir.z * speed; }
+            if(keys['KeyA']) { moveX -= sDir.x * speed; moveZ -= sDir.z * speed; }
+            if(keys['KeyD']) { moveX += sDir.x * speed; moveZ += sDir.z * speed; }
+
+            // 2. Cek Sumbu X secara mandiri (Biar bisa meluncur/slide)
+            let nextPosX = new THREE.Vector3(camera.position.x + moveX, 1.6, camera.position.z);
+            if (!checkCollision(nextPosX, playerRadius)) {
+                camera.position.x += moveX;
             }
-            if(keys['KeyS']) {
-                if(!checkCollision(new THREE.Vector3(camera.position.x - dir.x * speed, 1.6, camera.position.z - dir.z * speed), 0.7)) {
-                    camera.position.x -= dir.x * speed; camera.position.z -= dir.z * speed;
-                }
+
+            // 3. Cek Sumbu Z secara mandiri
+            let nextPosZ = new THREE.Vector3(camera.position.x, 1.6, camera.position.z + moveZ);
+            if (!checkCollision(nextPosZ, playerRadius)) {
+                camera.position.z += moveZ;
             }
 
             flashlight.position.copy(camera.position);
